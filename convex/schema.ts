@@ -26,6 +26,7 @@ export default defineSchema({
     tags: v.array(v.string()),
     projectId: v.optional(v.string()),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_column", ["column"])
     .index("by_assignee", ["assignee"])

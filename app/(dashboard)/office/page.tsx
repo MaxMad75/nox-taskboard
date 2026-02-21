@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type AgentStatus = "working" | "chatting" | "walking" | "idle";
+type Priority = "low" | "medium" | "high" | "urgent";
 
 interface Agent {
   id: string;
@@ -22,6 +25,8 @@ interface ActivityEvent {
   agent: string;
   action: string;
   timestamp: Date;
+  priority?: Priority;
+  isReal?: boolean;
 }
 
 interface ChatMessage {
@@ -45,6 +50,53 @@ const STATUS_LABELS: Record<AgentStatus, string> = {
   walking: "Walking",
   idle: "Idle",
 };
+
+// ── Priority Helpers ───────────────────────────────────────────────────────────
+const PRIORITY_COLORS: Record<Priority, string> = {
+  urgent: "#ef4444",
+  high:   "#f97316",
+  medium: "#eab308",
+  low:    "#6b7280",
+};
+
+const PRIORITY_LABELS: Record<Priority, string> = {
+  urgent: "Urgent",
+  high:   "High",
+  medium: "Medium",
+  low:    "Low",
+};
+
+function deriveVerb(title: string): string {
+  const t = title.toLowerCase();
+  if (/^fix/.test(t))        return "Fixing";
+  if (/^build/.test(t))      return "Building";
+  if (/^creat/.test(t))      return "Creating";
+  if (/^add/.test(t))        return "Adding";
+  if (/^deploy/.test(t))     return "Deploying";
+  if (/^launch/.test(t))     return "Launching";
+  if (/^writ/.test(t))       return "Writing";
+  if (/^draft/.test(t))      return "Drafting";
+  if (/^review/.test(t))     return "Reviewing";
+  if (/^debug/.test(t))      return "Debugging";
+  if (/^test/.test(t))       return "Testing";
+  if (/^design/.test(t))     return "Designing";
+  if (/^orchestrat/.test(t)) return "Orchestrating";
+  if (/^coordinat/.test(t))  return "Coordinating";
+  if (/^monitor/.test(t))    return "Monitoring";
+  if (/^track/.test(t))      return "Tracking";
+  if (/^updat/.test(t))      return "Updating";
+  if (/^refactor/.test(t))   return "Refactoring";
+  if (/^migrat/.test(t))     return "Migrating";
+  if (/^integrat/.test(t))   return "Integrating";
+  if (/^implement/.test(t))  return "Implementing";
+  if (/^configur/.test(t))   return "Configuring";
+  if (/^set.?up/.test(t))    return "Setting up";
+  if (/^optimiz/.test(t))    return "Optimizing";
+  if (/^analyz|^analys/.test(t)) return "Analyzing";
+  if (/^investigat/.test(t)) return "Investigating";
+  if (/^research/.test(t))   return "Researching";
+  return "Working on";
+}
 
 // ── Mock Data ──────────────────────────────────────────────────────────────────
 const INITIAL_AGENTS: Agent[] = [
@@ -721,24 +773,77 @@ function timeAgo(date: Date): string {
 }
 
 function ActivityPanel({ activities }: { activities: ActivityEvent[] }) {
+  const realCount = activities.filter((a) => a.isReal).length;
+
   return (
     <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+      {/* Header */}
+      <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid var(--border)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h3 style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>
           📡 Live Activity
         </h3>
+        {realCount > 0 && (
+          <span style={{
+            fontSize: "0.65rem", fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+            background: "rgba(34,197,94,0.12)", color: "#22c55e",
+            border: "1px solid rgba(34,197,94,0.25)",
+            display: "flex", alignItems: "center", gap: 4,
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: "50%", background: "#22c55e",
+              display: "inline-block",
+              animation: "pulse 1.5s infinite",
+            }} />
+            {realCount} live
+          </span>
+        )}
       </div>
+
+      {/* Events */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0.75rem", display: "flex", flexDirection: "column", gap: 6 }}>
         {activities.length === 0 && (
           <p style={{ color: "var(--text-muted)", fontSize: 13, fontStyle: "italic", padding: "0.5rem" }}>Waiting for activity…</p>
         )}
-        {activities.slice(0, 25).map((ev) => (
-          <div key={ev.id} style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.03)", borderLeft: "3px solid rgba(99,102,241,0.5)" }}>
-            <div style={{ fontSize: 13 }}>
-              <strong style={{ color: "#a78bfa" }}>{ev.agent}</strong>{" "}
+        {activities.slice(0, 30).map((ev) => (
+          <div
+            key={ev.id}
+            style={{
+              padding: "8px 10px", borderRadius: 8,
+              background: ev.isReal ? "rgba(34,197,94,0.04)" : "rgba(255,255,255,0.02)",
+              borderLeft: `3px solid ${ev.priority ? PRIORITY_COLORS[ev.priority] : "rgba(99,102,241,0.4)"}`,
+              transition: "background 0.2s",
+            }}
+          >
+            {/* Agent name + action */}
+            <div style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+              <strong style={{ color: "#a78bfa" }}>{ev.agent}</strong>
               <span style={{ color: "var(--text-secondary)" }}>{ev.action}</span>
+              {ev.isReal && (
+                <span style={{
+                  fontSize: 9, padding: "1px 5px", borderRadius: 3,
+                  background: "rgba(34,197,94,0.15)", color: "#22c55e",
+                  fontWeight: 700, letterSpacing: "0.04em", flexShrink: 0,
+                }}>
+                  LIVE
+                </span>
+              )}
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{timeAgo(ev.timestamp)}</div>
+            {/* Timestamp + priority */}
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>{timeAgo(ev.timestamp)}</span>
+              {ev.priority && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                  <div style={{
+                    width: 6, height: 6, borderRadius: "50%",
+                    background: PRIORITY_COLORS[ev.priority],
+                    boxShadow: `0 0 4px ${PRIORITY_COLORS[ev.priority]}80`,
+                  }} />
+                  <span style={{ color: PRIORITY_COLORS[ev.priority], fontSize: 10, fontWeight: 600 }}>
+                    {PRIORITY_LABELS[ev.priority]}
+                  </span>
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -993,15 +1098,55 @@ function CtrlBtn({ children, onClick, variant = "default" }: {
 // ── Office Page ────────────────────────────────────────────────────────────────
 export default function OfficePage() {
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
-  const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [mockActivities, setMockActivities] = useState<ActivityEvent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [chatAgent, setChatAgent] = useState<Agent | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
+  // ── Convex: pull in-progress tasks (live-updating) ──────────────────────────
+  const inProgressTasks = useQuery(api.tasks.list, { column: "in-progress" });
+
+  // Convert in-progress tasks → activity events
+  const taskActivities = useMemo<ActivityEvent[]>(() => {
+    if (!inProgressTasks) return [];
+    return inProgressTasks.map((task) => ({
+      id: task._id,
+      agent: task.assignee,
+      action: `${deriveVerb(task.title)} ${task.title}`,
+      timestamp: new Date(task.updatedAt ?? task.createdAt),
+      priority: task.priority as Priority,
+      isReal: true,
+    }));
+  }, [inProgressTasks]);
+
+  // Sync agent task labels with Convex data
+  useEffect(() => {
+    if (!inProgressTasks) return;
+    setAgents((prev) =>
+      prev.map((agent) => {
+        const live = inProgressTasks.find(
+          (t) => t.assignee.toLowerCase() === agent.name.toLowerCase()
+        );
+        if (live) {
+          return { ...agent, task: live.title, status: "working" };
+        }
+        return agent;
+      })
+    );
+  }, [inProgressTasks]);
+
+  // Merge live Convex tasks + mock system events, newest first
+  const activities = useMemo<ActivityEvent[]>(() => {
+    const merged = [...taskActivities, ...mockActivities];
+    merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return merged.slice(0, 50);
+  }, [taskActivities, mockActivities]);
+
+  // Background mock events for non-assigned agents
   useEffect(() => {
     const iv = setInterval(() => {
-      setActivities((prev) => [generateActivity(agents), ...prev].slice(0, 50));
-    }, 3000);
+      setMockActivities((prev) => [generateActivity(agents), ...prev].slice(0, 30));
+    }, 5000);
     return () => clearInterval(iv);
   }, [agents]);
 
@@ -1064,7 +1209,7 @@ export default function OfficePage() {
   }, [agents]);
 
   function pushActivity(agent: string, action: string) {
-    setActivities((prev) => [{ id: Math.random().toString(36).substring(2, 9), agent, action, timestamp: new Date() }, ...prev].slice(0, 50));
+    setMockActivities((prev) => [{ id: Math.random().toString(36).substring(2, 9), agent, action, timestamp: new Date() }, ...prev].slice(0, 50));
   }
 
   return (
@@ -1110,7 +1255,7 @@ export default function OfficePage() {
         <CtrlBtn onClick={gather}>📢 Gather</CtrlBtn>
         <CtrlBtn onClick={runMeeting}>🗓️ Run Meeting</CtrlBtn>
         <CtrlBtn onClick={watercooler}>☕ Watercooler</CtrlBtn>
-        <CtrlBtn onClick={() => { setAgents(INITIAL_AGENTS); setActivities([]); }} variant="danger">🔄 Reset</CtrlBtn>
+        <CtrlBtn onClick={() => { setAgents(INITIAL_AGENTS); setMockActivities([]); }} variant="danger">🔄 Reset</CtrlBtn>
       </div>
 
       {/* Main Content */}

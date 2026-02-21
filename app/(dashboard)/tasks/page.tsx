@@ -39,7 +39,18 @@ const PRIORITY_COLORS: Record<Priority, string> = {
   low:    "#6b7280",
 };
 
-const ASSIGNEES = ["Basti", "Nox"];
+const ASSIGNEES = ["Basti", "Henry", "Nox", "Codex", "Quill", "Pixel", "Echo", "Scout"];
+
+const AGENT_COLORS: Record<string, string> = {
+  Basti:  "linear-gradient(135deg, #ec4899, #f43f5e)",
+  Henry:  "linear-gradient(135deg, #f59e0b, #f97316)",
+  Nox:    "linear-gradient(135deg, #6366f1, #8b5cf6)",
+  Codex:  "linear-gradient(135deg, #3b82f6, #06b6d4)",
+  Quill:  "linear-gradient(135deg, #ec4899, #a855f7)",
+  Pixel:  "linear-gradient(135deg, #8b5cf6, #6366f1)",
+  Echo:   "linear-gradient(135deg, #22c55e, #10b981)",
+  Scout:  "linear-gradient(135deg, #14b8a6, #06b6d4)",
+};
 
 // ── Stats Header ───────────────────────────────────────────────────────
 function StatsHeader() {
@@ -236,10 +247,7 @@ function TaskCard({
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background:
-                  task.assignee === "Nox"
-                    ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
-                    : "linear-gradient(135deg, #ec4899, #f43f5e)",
+                background: AGENT_COLORS[task.assignee] ?? "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

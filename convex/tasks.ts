@@ -60,7 +60,7 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;
-    const clean: Record<string, unknown> = {};
+    const clean: Record<string, unknown> = { updatedAt: Date.now() };
     for (const [k, val] of Object.entries(fields)) {
       if (val !== undefined) clean[k] = val;
     }
