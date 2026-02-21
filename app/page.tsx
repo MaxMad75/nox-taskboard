@@ -3,208 +3,1015 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
-import { useState } from "react";
-import dynamic from "next/dynamic";
+import { useState, useCallback } from "react";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
+import {
+  CheckSquare,
+  Calendar,
+  FolderKanban,
+  Brain,
+  FileText,
+  Users,
+  Building2,
+  UsersRound,
+  Plus,
+  TrendingUp,
+  Clock,
+  BarChart3,
+  Target,
+  X,
+  ChevronDown,
+} from "lucide-react";
 
-// Lazy-load calendar (it uses browser-only APIs)
-const CalendarView = dynamic(() => import("./CalendarView"), { ssr: false });
+// ── Types ──────────────────────────────────────────────────────────────
+type Column = "recurring" | "backlog" | "in-progress" | "review" | "done";
+type Priority = "low" | "medium" | "high" | "urgent";
 
-type Status = "todo" | "in-progress" | "done";
-type Assignee = "Basti" | "Nox";
+const COLUMNS: { id: Column; label: string; color: string }[] = [
+  { id: "recurring", label: "Recurring", color: "#8b5cf6" },
+  { id: "backlog", label: "Backlog", color: "#6366f1" },
+  { id: "in-progress", label: "In Progress", color: "#f59e0b" },
+  { id: "review", label: "Review", color: "#3b82f6" },
+  { id: "done", label: "Done", color: "#22c55e" },
+];
 
-const STATUS_LABELS: Record<Status, string> = {
-  todo: "To Do",
-  "in-progress": "In Progress",
-  done: "Done",
+const PRIORITY_COLORS: Record<Priority, string> = {
+  urgent: "#ef4444",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#6b7280",
 };
 
-const STATUS_COLORS: Record<Status, string> = {
-  todo: "#6366f1",
-  "in-progress": "#f59e0b",
-  done: "#22c55e",
-};
+const ASSIGNEES = ["Basti", "Nox"];
 
-// ---------------------------------------------------------------------------
-// Tasks panel
-// ---------------------------------------------------------------------------
-function TasksPanel() {
-  const [filterStatus, setFilterStatus] = useState<Status | "">("");
-  const [filterAssignee, setFilterAssignee] = useState<Assignee | "">("");
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<Id<"tasks"> | null>(null);
-  const [form, setForm] = useState({ title: "", description: "", status: "todo" as Status, assignee: "Nox" as Assignee });
+// ── Sidebar ────────────────────────────────────────────────────────────
+const SIDEBAR_ITEMS = [
+  { icon: CheckSquare, label: "Tasks", active: true },
+  { icon: Calendar, label: "Calendar" },
+  { icon: FolderKanban, label: "Projects" },
+  { icon: Brain, label: "Memory" },
+  { icon: FileText, label: "Docs" },
+  { icon: Users, label: "People" },
+  { icon: Building2, label: "Office" },
+  { icon: UsersRound, label: "Team" },
+];
 
-  const tasks = useQuery(api.tasks.list, {
-    ...(filterStatus ? { status: filterStatus } : {}),
-    ...(filterAssignee ? { assignee: filterAssignee } : {}),
-  });
+function Sidebar() {
+  return (
+    <aside
+      style={{
+        width: 220,
+        minWidth: 220,
+        background: "var(--bg-secondary)",
+        borderRight: "1px solid var(--border)",
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        padding: "1.25rem 0",
+      }}
+    >
+      <div
+        style={{
+          padding: "0 1.25rem",
+          marginBottom: "2rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.6rem",
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.9rem",
+          }}
+        >
+          🚀
+        </div>
+        <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>
+          Mission Control
+        </span>
+      </div>
+
+      <nav style={{ flex: 1 }}>
+        {SIDEBAR_ITEMS.map((item) => (
+          <button
+            key={item.label}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              width: "100%",
+              padding: "0.6rem 1.25rem",
+              border: "none",
+              background: item.active ? "var(--accent-glow)" : "transparent",
+              color: item.active ? "#818cf8" : "var(--text-secondary)",
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              borderLeft: item.active
+                ? "3px solid #6366f1"
+                : "3px solid transparent",
+              transition: "all 0.15s",
+            }}
+          >
+            <item.icon size={18} />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      <div
+        style={{
+          padding: "0.75rem 1.25rem",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.6rem",
+        }}
+      >
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #6366f1, #ec4899)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+          }}
+        >
+          B
+        </div>
+        <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+          Basti
+        </span>
+      </div>
+    </aside>
+  );
+}
+
+// ── Stats Header ───────────────────────────────────────────────────────
+function StatsHeader() {
+  const stats = useQuery(api.tasks.stats);
+
+  const cards = [
+    {
+      label: "This week",
+      value: stats?.thisWeek ?? "–",
+      icon: TrendingUp,
+      color: "#6366f1",
+    },
+    {
+      label: "In progress",
+      value: stats?.inProgress ?? "–",
+      icon: Clock,
+      color: "#f59e0b",
+    },
+    {
+      label: "Total",
+      value: stats?.total ?? "–",
+      icon: BarChart3,
+      color: "#3b82f6",
+    },
+    {
+      label: "Completion",
+      value: stats ? `${stats.completion}%` : "–",
+      icon: Target,
+      color: "#22c55e",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: "1rem",
+        marginBottom: "1.5rem",
+      }}
+    >
+      {cards.map((c) => (
+        <div
+          key={c.label}
+          style={{
+            background: "var(--bg-secondary)",
+            borderRadius: 12,
+            padding: "1rem 1.25rem",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--text-secondary)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              {c.label}
+            </span>
+            <c.icon size={16} color={c.color} />
+          </div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{c.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Task Card ──────────────────────────────────────────────────────────
+interface TaskDoc {
+  _id: Id<"tasks">;
+  title: string;
+  description: string;
+  column: Column;
+  assignee: string;
+  priority: Priority;
+  tags: string[];
+  projectId?: string;
+  createdAt: number;
+}
+
+function TaskCard({
+  task,
+  index,
+  onEdit,
+}: {
+  task: TaskDoc;
+  index: number;
+  onEdit: (t: TaskDoc) => void;
+}) {
+  const timeAgo = getTimeAgo(task.createdAt);
+
+  return (
+    <Draggable draggableId={task._id} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          onClick={() => onEdit(task)}
+          style={{
+            background: snapshot.isDragging
+              ? "var(--bg-hover)"
+              : "var(--bg-card)",
+            borderRadius: 10,
+            padding: "0.85rem",
+            marginBottom: "0.5rem",
+            border: `1px solid ${snapshot.isDragging ? "#6366f1" : "var(--border)"}`,
+            cursor: "pointer",
+            transition: "border-color 0.15s",
+            ...provided.draggableProps.style,
+          }}
+        >
+          {/* Priority dot + title */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              marginBottom: "0.35rem",
+            }}
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: PRIORITY_COLORS[task.priority],
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "0.85rem",
+                lineHeight: 1.3,
+              }}
+            >
+              {task.title}
+            </span>
+          </div>
+
+          {/* Description */}
+          {task.description && (
+            <p
+              style={{
+                fontSize: "0.78rem",
+                color: "var(--text-secondary)",
+                margin: "0 0 0.5rem 1.1rem",
+                lineHeight: 1.4,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {task.description}
+            </p>
+          )}
+
+          {/* Tags */}
+          {task.tags.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                gap: "0.3rem",
+                flexWrap: "wrap",
+                marginBottom: "0.5rem",
+                marginLeft: "1.1rem",
+              }}
+            >
+              {task.tags.map((tag) => (
+                <span
+                  key={tag}
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "0.1rem 0.45rem",
+                    borderRadius: 4,
+                    background: "rgba(99,102,241,0.15)",
+                    color: "#818cf8",
+                    fontWeight: 500,
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Footer: avatar + time */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginLeft: "1.1rem",
+            }}
+          >
+            <div
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background:
+                  task.assignee === "Nox"
+                    ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+                    : "linear-gradient(135deg, #ec4899, #f43f5e)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+              }}
+              title={task.assignee}
+            >
+              {task.assignee[0]}
+            </div>
+            <span style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>
+              {timeAgo}
+            </span>
+          </div>
+        </div>
+      )}
+    </Draggable>
+  );
+}
+
+function getTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+// ── New/Edit Task Modal ────────────────────────────────────────────────
+function TaskModal({
+  task,
+  onClose,
+}: {
+  task: TaskDoc | null;
+  onClose: () => void;
+}) {
   const createTask = useMutation(api.tasks.create);
   const updateTask = useMutation(api.tasks.update);
   const removeTask = useMutation(api.tasks.remove);
 
-  const resetForm = () => {
-    setForm({ title: "", description: "", status: "todo", assignee: "Nox" });
-    setEditingId(null);
-    setShowForm(false);
-  };
+  const [form, setForm] = useState({
+    title: task?.title ?? "",
+    description: task?.description ?? "",
+    column: task?.column ?? ("backlog" as Column),
+    assignee: task?.assignee ?? "Nox",
+    priority: task?.priority ?? ("medium" as Priority),
+    tags: task?.tags?.join(", ") ?? "",
+    projectId: task?.projectId ?? "",
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    if (editingId) {
-      await updateTask({ id: editingId, ...form });
+    const data = {
+      title: form.title,
+      description: form.description,
+      column: form.column,
+      assignee: form.assignee,
+      priority: form.priority,
+      tags: form.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      projectId: form.projectId || undefined,
+    };
+    if (task) {
+      await updateTask({ id: task._id, ...data });
     } else {
-      await createTask(form);
+      await createTask(data);
     }
-    resetForm();
+    onClose();
   };
 
-  const startEdit = (task: { _id: Id<"tasks">; title: string; description: string; status: Status; assignee: Assignee }) => {
-    setForm({ title: task.title, description: task.description, status: task.status, assignee: task.assignee });
-    setEditingId(task._id);
-    setShowForm(true);
+  const handleDelete = async () => {
+    if (task) {
+      await removeTask({ id: task._id });
+      onClose();
+    }
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "0.55rem 0.75rem",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-primary)",
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    outline: "none",
   };
 
   return (
-    <div>
-      {/* Filters */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as Status | "")} style={selectStyle}>
-          <option value="">All Statuses</option>
-          {(["todo", "in-progress", "done"] as Status[]).map((s) => (
-            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-          ))}
-        </select>
-        <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value as Assignee | "")} style={selectStyle}>
-          <option value="">All Assignees</option>
-          <option value="Basti">Basti</option>
-          <option value="Nox">Nox</option>
-        </select>
-        <button onClick={() => { resetForm(); setShowForm(true); }} style={btnPrimary}>+ New Task</button>
-      </div>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+      }}
+      onClick={onClose}
+    >
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit}
+        style={{
+          background: "var(--bg-secondary)",
+          borderRadius: 16,
+          padding: "1.5rem",
+          width: 440,
+          maxWidth: "90vw",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "1.25rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+            {task ? "Edit Task" : "New Task"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-      {/* Form */}
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ background: "#1a1a2e", borderRadius: 12, padding: "1.5rem", marginBottom: "1.5rem" }}>
-          <h2 style={{ marginTop: 0 }}>{editingId ? "Edit Task" : "New Task"}</h2>
-          <input placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} required />
-          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} />
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })} style={selectStyle}>
-              {(["todo", "in-progress", "done"] as Status[]).map((s) => (
-                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+        <input
+          placeholder="Task title"
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+          style={{ ...fieldStyle, marginBottom: "0.75rem", fontWeight: 600 }}
+          required
+          autoFocus
+        />
+        <textarea
+          placeholder="Description (optional)"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          style={{
+            ...fieldStyle,
+            marginBottom: "0.75rem",
+            minHeight: 70,
+            resize: "vertical",
+          }}
+        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "0.75rem",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <div>
+            <label
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: "0.25rem",
+                display: "block",
+              }}
+            >
+              Column
+            </label>
+            <select
+              value={form.column}
+              onChange={(e) =>
+                setForm({ ...form, column: e.target.value as Column })
+              }
+              style={fieldStyle}
+            >
+              {COLUMNS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
               ))}
             </select>
-            <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value as Assignee })} style={selectStyle}>
-              <option value="Basti">Basti</option>
-              <option value="Nox">Nox</option>
+          </div>
+          <div>
+            <label
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: "0.25rem",
+                display: "block",
+              }}
+            >
+              Priority
+            </label>
+            <select
+              value={form.priority}
+              onChange={(e) =>
+                setForm({ ...form, priority: e.target.value as Priority })
+              }
+              style={fieldStyle}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
             </select>
           </div>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-            <button type="submit" style={btnPrimary}>{editingId ? "Save" : "Create"}</button>
-            <button type="button" onClick={resetForm} style={btnSecondary}>Cancel</button>
+          <div>
+            <label
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: "0.25rem",
+                display: "block",
+              }}
+            >
+              Assignee
+            </label>
+            <select
+              value={form.assignee}
+              onChange={(e) =>
+                setForm({ ...form, assignee: e.target.value })
+              }
+              style={fieldStyle}
+            >
+              {ASSIGNEES.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
           </div>
-        </form>
-      )}
-
-      {/* Task List */}
-      {tasks === undefined ? (
-        <p>Loading…</p>
-      ) : tasks.length === 0 ? (
-        <p style={{ color: "#888" }}>No tasks found. Create one!</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {tasks.map((task) => (
-            <div key={task._id} style={{ background: "#16213e", borderRadius: 10, padding: "1rem 1.25rem", borderLeft: `4px solid ${STATUS_COLORS[task.status]}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: "0 0 0.25rem" }}>{task.title}</h3>
-                  {task.description && <p style={{ margin: "0 0 0.5rem", color: "#aaa", fontSize: "0.9rem" }}>{task.description}</p>}
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    <span style={{ ...badge, background: STATUS_COLORS[task.status] }}>{STATUS_LABELS[task.status]}</span>
-                    <span style={{ ...badge, background: "#6366f1" }}>{task.assignee}</span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "0.25rem", flexShrink: 0 }}>
-                  <button onClick={() => startEdit(task)} style={btnSmall}>✏️</button>
-                  <button onClick={() => removeTask({ id: task._id })} style={btnSmall}>🗑️</button>
-                </div>
-              </div>
-            </div>
-          ))}
+          <div>
+            <label
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: "0.25rem",
+                display: "block",
+              }}
+            >
+              Project
+            </label>
+            <input
+              placeholder="Project name"
+              value={form.projectId}
+              onChange={(e) =>
+                setForm({ ...form, projectId: e.target.value })
+              }
+              style={fieldStyle}
+            />
+          </div>
         </div>
-      )}
+
+        <div style={{ marginBottom: "1rem" }}>
+          <label
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              marginBottom: "0.25rem",
+              display: "block",
+            }}
+          >
+            Tags (comma separated)
+          </label>
+          <input
+            placeholder="e.g. frontend, bug, urgent"
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            style={fieldStyle}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            type="submit"
+            style={{
+              flex: 1,
+              padding: "0.55rem",
+              borderRadius: 8,
+              border: "none",
+              background: "#6366f1",
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+            }}
+          >
+            {task ? "Save Changes" : "Create Task"}
+          </button>
+          {task && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              style={{
+                padding: "0.55rem 1rem",
+                borderRadius: 8,
+                border: "1px solid #ef4444",
+                background: "transparent",
+                color: "#ef4444",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Root page with tabs
-// ---------------------------------------------------------------------------
-type Tab = "tasks" | "calendar";
+// ── Kanban Board ───────────────────────────────────────────────────────
+function KanbanBoard({
+  filterAssignee,
+  filterProject,
+}: {
+  filterAssignee: string;
+  filterProject: string;
+}) {
+  const queryArgs: Record<string, string> = {};
+  if (filterAssignee) queryArgs.assignee = filterAssignee;
+  if (filterProject) queryArgs.projectId = filterProject;
 
-export default function Home() {
-  const [tab, setTab] = useState<Tab>("tasks");
+  const tasks = useQuery(api.tasks.list, queryArgs) as TaskDoc[] | undefined;
+  const updateTask = useMutation(api.tasks.update);
+  const [editingTask, setEditingTask] = useState<TaskDoc | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
-  const tabBtn = (t: Tab, label: string): React.CSSProperties => ({
-    padding: "0.5rem 1.25rem",
-    borderRadius: "8px 8px 0 0",
-    border: "none",
-    borderBottom: tab === t ? "2px solid #6366f1" : "2px solid transparent",
-    background: "transparent",
-    color: tab === t ? "#6366f1" : "#888",
-    fontSize: "0.95rem",
-    fontWeight: tab === t ? 700 : 400,
-    cursor: "pointer",
-    transition: "color 0.15s",
-    outline: "none",
-  });
+  const onDragEnd = useCallback(
+    (result: DropResult) => {
+      if (!result.destination) return;
+      const newColumn = result.destination.droppableId as Column;
+      if (newColumn !== result.source.droppableId) {
+        updateTask({ id: result.draggableId as Id<"tasks">, column: newColumn });
+      }
+    },
+    [updateTask]
+  );
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "2rem 1rem", fontFamily: "var(--font-geist-sans)" }}>
-      <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>📋 Nox Taskboard</h1>
-
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: "0.25rem", borderBottom: "1px solid #333", marginBottom: "1.5rem" }}>
-        <button style={tabBtn("tasks", "Tasks")} onClick={() => setTab("tasks")}>📝 Tasks</button>
-        <button style={tabBtn("calendar", "Calendar")} onClick={() => setTab("calendar")}>📅 Calendar</button>
+    <>
+      {/* Toolbar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+        }}
+      >
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Board</h2>
+        <button
+          onClick={() => setShowNew(true)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            padding: "0.45rem 1rem",
+            borderRadius: 8,
+            border: "none",
+            background: "#6366f1",
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: "0.82rem",
+            cursor: "pointer",
+          }}
+        >
+          <Plus size={16} /> New task
+        </button>
       </div>
 
-      {/* Panels */}
-      {tab === "tasks" && <TasksPanel />}
-      {tab === "calendar" && <CalendarView />}
+      {/* Board */}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${COLUMNS.length}, 1fr)`,
+            gap: "0.75rem",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {COLUMNS.map((col) => {
+            const colTasks = (tasks ?? []).filter((t) => t.column === col.id);
+            return (
+              <div
+                key={col.id}
+                style={{
+                  background: "var(--bg-secondary)",
+                  borderRadius: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {/* Column header */}
+                <div
+                  style={{
+                    padding: "0.75rem 0.85rem",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: col.color,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    {col.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--text-muted)",
+                      marginLeft: "auto",
+                    }}
+                  >
+                    {colTasks.length}
+                  </span>
+                </div>
+
+                {/* Droppable area */}
+                <Droppable droppableId={col.id}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      style={{
+                        flex: 1,
+                        padding: "0.5rem",
+                        overflowY: "auto",
+                        minHeight: 80,
+                        background: snapshot.isDraggingOver
+                          ? "rgba(99,102,241,0.05)"
+                          : "transparent",
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      {colTasks.map((task, i) => (
+                        <TaskCard
+                          key={task._id}
+                          task={task}
+                          index={i}
+                          onEdit={setEditingTask}
+                        />
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            );
+          })}
+        </div>
+      </DragDropContext>
+
+      {/* Modals */}
+      {showNew && <TaskModal task={null} onClose={() => setShowNew(false)} />}
+      {editingTask && (
+        <TaskModal
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────
+export default function Home() {
+  const [filterAssignee, setFilterAssignee] = useState("");
+  const [filterProject, setFilterProject] = useState("");
+
+  return (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <Sidebar />
+
+      <main
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          padding: "1.5rem 2rem",
+          overflow: "hidden",
+          minWidth: 0,
+        }}
+      >
+        {/* Top bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700 }}>
+            Mission Control
+          </h1>
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <FilterDropdown
+              label="Assignee"
+              value={filterAssignee}
+              options={ASSIGNEES}
+              onChange={setFilterAssignee}
+            />
+            <FilterDropdown
+              label="Project"
+              value={filterProject}
+              options={[]}
+              onChange={setFilterProject}
+              freeText
+            />
+          </div>
+        </div>
+
+        <StatsHeader />
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <KanbanBoard
+            filterAssignee={filterAssignee}
+            filterProject={filterProject}
+          />
+        </div>
+      </main>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.6rem 0.8rem", borderRadius: 8, border: "1px solid #333",
-  background: "#0f0f23", color: "#eee", fontSize: "0.95rem", marginBottom: "0.75rem", boxSizing: "border-box",
-};
+// ── Filter Dropdown ────────────────────────────────────────────────────
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  freeText,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  freeText?: boolean;
+}) {
+  if (freeText) {
+    return (
+      <div style={{ position: "relative" }}>
+        <input
+          placeholder={label}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            padding: "0.4rem 0.75rem",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+            fontSize: "0.82rem",
+            width: 140,
+            outline: "none",
+          }}
+        />
+      </div>
+    );
+  }
 
-const selectStyle: React.CSSProperties = {
-  padding: "0.5rem 0.8rem", borderRadius: 8, border: "1px solid #333",
-  background: "#0f0f23", color: "#eee", fontSize: "0.9rem",
-};
-
-const btnPrimary: React.CSSProperties = {
-  padding: "0.5rem 1.2rem", borderRadius: 8, border: "none",
-  background: "#6366f1", color: "#fff", fontSize: "0.9rem", cursor: "pointer", fontWeight: 600,
-};
-
-const btnSecondary: React.CSSProperties = {
-  padding: "0.5rem 1.2rem", borderRadius: 8, border: "1px solid #444",
-  background: "transparent", color: "#ccc", fontSize: "0.9rem", cursor: "pointer",
-};
-
-const btnSmall: React.CSSProperties = {
-  padding: "0.3rem 0.5rem", borderRadius: 6, border: "1px solid #333",
-  background: "transparent", cursor: "pointer", fontSize: "0.85rem",
-};
-
-const badge: React.CSSProperties = {
-  padding: "0.15rem 0.6rem", borderRadius: 12, fontSize: "0.75rem", color: "#fff", fontWeight: 600,
-};
+  return (
+    <div style={{ position: "relative" }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: "0.4rem 1.8rem 0.4rem 0.75rem",
+          borderRadius: 8,
+          border: "1px solid var(--border)",
+          background: "var(--bg-secondary)",
+          color: value ? "var(--text-primary)" : "var(--text-muted)",
+          fontSize: "0.82rem",
+          appearance: "none",
+          cursor: "pointer",
+          outline: "none",
+        }}
+      >
+        <option value="">All {label}s</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={14}
+        style={{
+          position: "absolute",
+          right: 8,
+          top: "50%",
+          transform: "translateY(-50%)",
+          pointerEvents: "none",
+          color: "var(--text-muted)",
+        }}
+      />
+    </div>
+  );
+}

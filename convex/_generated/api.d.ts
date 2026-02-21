@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as projects from "../projects.js";
 import type * as schedules from "../schedules.js";
 import type * as tasks from "../tasks.js";
 
@@ -18,6 +19,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  projects: typeof projects;
   schedules: typeof schedules;
   tasks: typeof tasks;
 }>;
