@@ -29,7 +29,14 @@ interface Agent {
   layer: Layer;
   icon: React.ComponentType<{ size?: number; color?: string }>;
   note?: string;
+  model?: string;
 }
+
+const MODEL_ABBREV: Record<string, string> = {
+  "claude-opus-4-6":   "O4",
+  "claude-sonnet-4-6": "S4",
+  "claude-haiku-4-5":  "H5",
+};
 
 const AGENTS: Agent[] = [
   {
@@ -45,6 +52,7 @@ const AGENTS: Agent[] = [
     layer: "leadership",
     icon: Star,
     note: "Basti",
+    model: "claude-opus-4-6",
   },
   {
     id: "nox",
@@ -59,6 +67,7 @@ const AGENTS: Agent[] = [
     layer: "core",
     icon: Cpu,
     note: "Me",
+    model: "claude-sonnet-4-6",
   },
   {
     id: "codex",
@@ -72,6 +81,7 @@ const AGENTS: Agent[] = [
     emoji: "⚙️",
     layer: "development",
     icon: GitBranch,
+    model: "claude-sonnet-4-6",
   },
   {
     id: "quill",
@@ -85,6 +95,7 @@ const AGENTS: Agent[] = [
     emoji: "✍️",
     layer: "content",
     icon: Feather,
+    model: "claude-haiku-4-5",
   },
   {
     id: "pixel",
@@ -98,6 +109,7 @@ const AGENTS: Agent[] = [
     emoji: "🎨",
     layer: "content",
     icon: Palette,
+    model: "claude-haiku-4-5",
   },
   {
     id: "echo",
@@ -111,6 +123,7 @@ const AGENTS: Agent[] = [
     emoji: "📡",
     layer: "growth",
     icon: Zap,
+    model: "claude-haiku-4-5",
   },
   {
     id: "scout",
@@ -124,6 +137,7 @@ const AGENTS: Agent[] = [
     emoji: "🔭",
     layer: "growth",
     icon: Radar,
+    model: "claude-sonnet-4-6",
   },
 ];
 
@@ -137,6 +151,51 @@ const LAYER_META: Record<
   content:     { label: "Content & Design",   color: "#ec4899", bg: "rgba(236,72,153,0.06)"  },
   growth:      { label: "Growth & Operations",color: "#14b8a6", bg: "rgba(20,184,166,0.06)"  },
 };
+
+// ── Model Badge ────────────────────────────────────────────────────────
+function ModelBadge({ model }: { model: string }) {
+  const abbrev = MODEL_ABBREV[model] ?? model;
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        padding: "0.2rem 0.6rem",
+        borderRadius: 6,
+        background: "rgba(99,102,241,0.1)",
+        border: "1px solid rgba(99,102,241,0.25)",
+        width: "fit-content",
+      }}
+    >
+      <span style={{ fontSize: "0.6rem", color: "#818cf8" }}>⬡</span>
+      <span
+        style={{
+          fontSize: "0.68rem",
+          fontWeight: 600,
+          color: "#a5b4fc",
+          letterSpacing: "0.02em",
+          fontFamily: "monospace",
+        }}
+      >
+        {model}
+      </span>
+      <span
+        style={{
+          fontSize: "0.6rem",
+          fontWeight: 700,
+          color: "#6366f1",
+          background: "rgba(99,102,241,0.2)",
+          borderRadius: 3,
+          padding: "0 0.25rem",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {abbrev}
+      </span>
+    </div>
+  );
+}
 
 // ── Skill Badge ────────────────────────────────────────────────────────
 function SkillBadge({ label, color }: { label: string; color: string }) {
@@ -267,6 +326,9 @@ function AgentCard({ agent }: { agent: Agent }) {
       >
         {agent.description}
       </p>
+
+      {/* Model badge */}
+      {agent.model && <ModelBadge model={agent.model} />}
 
       {/* Skill badges */}
       <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
