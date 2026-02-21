@@ -1,4 +1,4 @@
-import CalendarView from "../../CalendarView";
+import CalendarWeekView from "../../CalendarWeekView";
 
 export default function CalendarPage() {
   return (
@@ -12,10 +12,7 @@ export default function CalendarPage() {
         minWidth: 0,
       }}
     >
-      <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "1.5rem" }}>
-        Calendar
-      </h1>
-      <CalendarView />
+      <CalendarWeekView />
     </div>
   );
 }
