@@ -4,6 +4,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { useState } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy-load calendar (it uses browser-only APIs)
+const CalendarView = dynamic(() => import("./CalendarView"), { ssr: false });
 
 type Status = "todo" | "in-progress" | "done";
 type Assignee = "Basti" | "Nox";
@@ -20,7 +24,10 @@ const STATUS_COLORS: Record<Status, string> = {
   done: "#22c55e",
 };
 
-export default function Home() {
+// ---------------------------------------------------------------------------
+// Tasks panel
+// ---------------------------------------------------------------------------
+function TasksPanel() {
   const [filterStatus, setFilterStatus] = useState<Status | "">("");
   const [filterAssignee, setFilterAssignee] = useState<Assignee | "">("");
   const [showForm, setShowForm] = useState(false);
@@ -59,9 +66,7 @@ export default function Home() {
   };
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: "2rem 1rem", fontFamily: "var(--font-geist-sans)" }}>
-      <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "1.5rem" }}>📋 Nox Taskboard</h1>
-
+    <div>
       {/* Filters */}
       <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as Status | "")} style={selectStyle}>
@@ -104,7 +109,7 @@ export default function Home() {
 
       {/* Task List */}
       {tasks === undefined ? (
-        <p>Loading...</p>
+        <p>Loading…</p>
       ) : tasks.length === 0 ? (
         <p style={{ color: "#888" }}>No tasks found. Create one!</p>
       ) : (
@@ -133,6 +138,48 @@ export default function Home() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Root page with tabs
+// ---------------------------------------------------------------------------
+type Tab = "tasks" | "calendar";
+
+export default function Home() {
+  const [tab, setTab] = useState<Tab>("tasks");
+
+  const tabBtn = (t: Tab, label: string): React.CSSProperties => ({
+    padding: "0.5rem 1.25rem",
+    borderRadius: "8px 8px 0 0",
+    border: "none",
+    borderBottom: tab === t ? "2px solid #6366f1" : "2px solid transparent",
+    background: "transparent",
+    color: tab === t ? "#6366f1" : "#888",
+    fontSize: "0.95rem",
+    fontWeight: tab === t ? 700 : 400,
+    cursor: "pointer",
+    transition: "color 0.15s",
+    outline: "none",
+  });
+
+  return (
+    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "2rem 1rem", fontFamily: "var(--font-geist-sans)" }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>📋 Nox Taskboard</h1>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: "0.25rem", borderBottom: "1px solid #333", marginBottom: "1.5rem" }}>
+        <button style={tabBtn("tasks", "Tasks")} onClick={() => setTab("tasks")}>📝 Tasks</button>
+        <button style={tabBtn("calendar", "Calendar")} onClick={() => setTab("calendar")}>📅 Calendar</button>
+      </div>
+
+      {/* Panels */}
+      {tab === "tasks" && <TasksPanel />}
+      {tab === "calendar" && <CalendarView />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared styles
+// ---------------------------------------------------------------------------
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "0.6rem 0.8rem", borderRadius: 8, border: "1px solid #333",
   background: "#0f0f23", color: "#eee", fontSize: "0.95rem", marginBottom: "0.75rem", boxSizing: "border-box",
